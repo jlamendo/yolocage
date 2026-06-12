@@ -1,0 +1,57 @@
+{
+  "name": "yolocage",
+  "version": "0.1.0",
+  "description": "Sandboxed claude-code / codex container with built-in egress credential scrubber. Run AI coding agents in --dangerously-skip-permissions mode with a safety net.",
+  "license": "MIT",
+  "author": "Cork contributors",
+  "homepage": "https://github.com/jlamendo/yolocage",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jlamendo/yolocage.git"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "docker",
+    "sandbox",
+    "secrets",
+    "credential-scrubber",
+    "ai-agent"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "main": "yc.js",
+  "bin": {
+    "yolocage": "./yc.js",
+    "yc": "./yc.js"
+  },
+  "files": [
+    "yc.js",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "jest --colors",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "node --check yc.js && find lib -name '*.js' -exec node --check {} \\;"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/test/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "yc.js",
+      "lib/**/*.js"
+    ]
+  }
+}

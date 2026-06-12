@@ -1,0 +1,10 @@
+test/
+images/
+addons/
+coverage/
+.github/
+.gitignore
+.npmignore
+jest.config.js
+*.tgz
+.yolocage-dev/
