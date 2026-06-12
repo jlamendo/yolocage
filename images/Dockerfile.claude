@@ -1,18 +1,25 @@
 # yolocage — claude-code cage image.
 #
 # Layered for cache hits:
-#   1. base apt deps
-#   2. python + mitmproxy + scrub_secrets lib
-#   3. claude-code installer (latest at build time, then npm pin)
-#   4. entrypoint
-#   5. agent user
+#   1. base apt deps + python 3.12 (ubuntu 24.04 default)
+#   2. node 22 via NodeSource
+#   3. mitmproxy + scrub_secrets lib
+#   4. claude-code (latest at build time, then npm pin)
+#   5. entrypoint
+#   6. agent user (uid 1000, replacing ubuntu base's default ubuntu user)
 #
 # Build:
 #   docker build -f images/Dockerfile.claude -t yolocage/claude:dev .
 
-FROM node:22-bookworm
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 # ─── Stage 1: base apt deps ────────────────────────────────────────
+# Ubuntu 24.04 ships Python 3.12 by default — required for the mitmproxy
+# 11.1.x line (the previous node:22-bookworm base shipped Python 3.11
+# which capped mitmproxy at 11.0.2). Aligning the pin with cork's
+# production ssproxy (11.1.3).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -30,10 +37,19 @@ RUN apt-get update \
       netcat-openbsd \
  && rm -rf /var/lib/apt/lists/*
 
-# ─── Stage 2: mitmproxy + scrubber lib ─────────────────────────────
-# --break-system-packages: debian 12 enforces PEP-668; mitmproxy ships
+# ─── Stage 2: node 22 via NodeSource ───────────────────────────────
+# Ubuntu 24.04's stock `nodejs` package is on the 18 line; claude-code
+# bumps frequently and prefers newer node. NodeSource's 22 setup script
+# is the upstream-recommended path for current node on Ubuntu.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/* \
+ && node --version && npm --version
+
+# ─── Stage 3: mitmproxy + scrubber lib ─────────────────────────────
+# --break-system-packages: Ubuntu 24.04 enforces PEP-668; mitmproxy ships
 # as a pip-only distribution and we want it system-wide.
-ARG MITMPROXY_VERSION=11.0.2
+ARG MITMPROXY_VERSION=11.1.3
 RUN pip install --no-cache-dir --break-system-packages \
       "mitmproxy==${MITMPROXY_VERSION}" \
  && mitmdump --version | head -1
@@ -45,7 +61,7 @@ COPY addons/scrub_secrets.py     /opt/yolocage/ssproxy/scrub_secrets.py
 COPY addons/gitleaks_patterns.py /opt/yolocage/ssproxy/gitleaks_patterns.py
 COPY addons/addon.py             /opt/yolocage/ssproxy/addon.py
 
-# ─── Stage 3: claude-code ──────────────────────────────────────────
+# ─── Stage 4: claude-code ──────────────────────────────────────────
 # Two-step install: the claude.ai installer gives us the native CLI
 # bundle (latest stable at build time), then we npm-install a pinned
 # version on top so the image is reproducible. The npm version
@@ -57,16 +73,16 @@ ARG CLAUDE_CODE_VERSION=2.1.173
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && claude --version
 
-# ─── Stage 4: entrypoint ───────────────────────────────────────────
+# ─── Stage 5: entrypoint ───────────────────────────────────────────
 COPY images/entrypoint.sh /usr/local/bin/yc-entrypoint
 RUN chmod 0755 /usr/local/bin/yc-entrypoint
 
-# ─── Stage 5: non-root agent user ──────────────────────────────────
+# ─── Stage 6: non-root agent user ──────────────────────────────────
 # uid 1000 keeps the bind-mounted /workspace owner-matched for the
 # common case of a developer running yc from their own user account.
-# node:22-bookworm ships with a pre-existing `node` user at uid 1000 —
+# ubuntu:24.04 ships with a pre-existing `ubuntu` user at uid 1000 —
 # remove it before adding `agent` so the uid is free.
-RUN userdel -r node 2>/dev/null || true \
+RUN userdel -r ubuntu 2>/dev/null || true \
  && groupadd --system --gid 1000 agent \
  && useradd --system --uid 1000 --gid agent \
       --home-dir /home/agent --create-home --shell /bin/bash agent \

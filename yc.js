@@ -28,8 +28,9 @@ const { Command } = require('commander');
 const { resolveCascade } = require('./lib/config');
 const { isKnownType, getType, TYPE_DEFAULTS } = require('./lib/types');
 const { buildRunArgs, runDocker, dockerArgv } = require('./lib/docker');
+const { update: runUpdate } = require('./lib/update');
 
-const SUBCOMMANDS = new Set(['create', 'run', 'list', 'rm', 'logs', 'pull', 'help']);
+const SUBCOMMANDS = new Set(['create', 'run', 'list', 'rm', 'logs', 'pull', 'update', 'help']);
 
 // Detect shortcut vs subcommand form. Returns:
 //   { mode: 'shortcut', type, passthrough }    or
@@ -234,6 +235,21 @@ function buildProgram() {
   program.command('rm <name>').description('Destroy a named cage').action(commandRm);
   program.command('logs <name>').description('Tail logs of a named cage').action(commandLogs);
   program.command('pull').description('Pull / refresh yolocage images').action(commandPull);
+
+  program
+    .command('update')
+    .description('Update yolocage itself + refresh cage images')
+    .option('--check', 'only report the version delta; do not install')
+    .option('--no-pull', 'skip the docker image refresh after binary update')
+    .option('--force', 'install even if already on the latest version')
+    .action(async (opts) => {
+      const exit = await runUpdate({
+        check: !!opts.check,
+        pull: opts.pull !== false,
+        force: !!opts.force,
+      });
+      process.exit(exit || 0);
+    });
 
   return program;
 }

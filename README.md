@@ -33,6 +33,8 @@ npm i -g yolocage
 yc claude
 ```
 
+> The global install registers both `yolocage` and `yc` as commands. Yandex Cloud's CLI also uses `yc` — if you have both, PATH order decides which wins. Invoke `yolocage` to disambiguate, or alias one of them. The conflict is rare enough that the short alias is worth shipping; document over remove.
+
 ## Usage
 
 ### Shortcut form (one-shot, ephemeral)
@@ -55,7 +57,19 @@ yc list                      # show all cages
 yc rm projectbox             # destroy
 yc logs projectbox           # tail
 yc pull                      # refresh yolocage images
+yc update                    # update yolocage CLI + images in one shot
 ```
+
+### Updating yolocage
+
+```bash
+yc update              # binary + images
+yc update --check      # just report the version delta
+yc update --no-pull    # skip the docker pull
+yc update --force      # reinstall current version
+```
+
+`yc update` runs `npm install -g yolocage@latest` (with sudo if the global prefix needs root) and then re-pulls the cage images. If you installed via `npx` instead of a global install, `yc update` will tell you so and only refresh the images — the next `npx yolocage` invocation fetches the latest binary on its own.
 
 Named cages persist between runs. Use them when you want to maintain in-container state across sessions (with `--tmux`) or want explicit naming for the cage holding your active claude session.
 

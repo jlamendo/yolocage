@@ -1,10 +1,16 @@
 # yolocage — codex cage image.
 #
-# Identical to Dockerfile.claude except the npm install pulls codex
-# instead of claude-code. Cache-friendly with the claude image: every
-# layer above the agent-CLI install is shared.
+# Identical layer structure to Dockerfile.claude except the npm install
+# pulls codex instead of claude-code. The base + python + mitmproxy +
+# addon layers are byte-identical to claude so docker layer cache reuses
+# them when both images are built in the same context.
+#
+# Build:
+#   docker build -f images/Dockerfile.codex -t yolocage/codex:dev .
 
-FROM node:22-bookworm
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 # ─── Stage 1: base apt deps ────────────────────────────────────────
 RUN apt-get update \
@@ -24,8 +30,14 @@ RUN apt-get update \
       netcat-openbsd \
  && rm -rf /var/lib/apt/lists/*
 
-# ─── Stage 2: mitmproxy + scrubber lib ─────────────────────────────
-ARG MITMPROXY_VERSION=11.0.2
+# ─── Stage 2: node 22 via NodeSource ───────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/* \
+ && node --version && npm --version
+
+# ─── Stage 3: mitmproxy + scrubber lib ─────────────────────────────
+ARG MITMPROXY_VERSION=11.1.3
 RUN pip install --no-cache-dir --break-system-packages \
       "mitmproxy==${MITMPROXY_VERSION}" \
  && mitmdump --version | head -1
@@ -34,20 +46,20 @@ COPY addons/scrub_secrets.py     /opt/yolocage/ssproxy/scrub_secrets.py
 COPY addons/gitleaks_patterns.py /opt/yolocage/ssproxy/gitleaks_patterns.py
 COPY addons/addon.py             /opt/yolocage/ssproxy/addon.py
 
-# ─── Stage 3: codex CLI ────────────────────────────────────────────
-# @openai/codex; current npm `latest` per cork's pinning.
+# ─── Stage 4: codex CLI ────────────────────────────────────────────
+# @openai/codex; pinned to match cork's worker-codex.
 ARG CODEX_VERSION=0.139.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}" \
  && codex --version
 
-# ─── Stage 4: entrypoint ───────────────────────────────────────────
+# ─── Stage 5: entrypoint ───────────────────────────────────────────
 COPY images/entrypoint.sh /usr/local/bin/yc-entrypoint
 RUN chmod 0755 /usr/local/bin/yc-entrypoint
 
-# ─── Stage 5: non-root agent user ──────────────────────────────────
-# node:22-bookworm ships with a pre-existing `node` user at uid 1000 —
+# ─── Stage 6: non-root agent user ──────────────────────────────────
+# ubuntu:24.04 ships with a pre-existing `ubuntu` user at uid 1000 —
 # remove it before adding `agent` so the uid is free.
-RUN userdel -r node 2>/dev/null || true \
+RUN userdel -r ubuntu 2>/dev/null || true \
  && groupadd --system --gid 1000 agent \
  && useradd --system --uid 1000 --gid agent \
       --home-dir /home/agent --create-home --shell /bin/bash agent \
