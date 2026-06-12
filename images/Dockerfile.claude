@@ -1,0 +1,82 @@
+# yolocage — claude-code cage image.
+#
+# Layered for cache hits:
+#   1. base apt deps
+#   2. python + mitmproxy + scrub_secrets lib
+#   3. claude-code installer (latest at build time, then npm pin)
+#   4. entrypoint
+#   5. agent user
+#
+# Build:
+#   docker build -f images/Dockerfile.claude -t yolocage/claude:dev .
+
+FROM node:22-bookworm
+
+# ─── Stage 1: base apt deps ────────────────────────────────────────
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      tmux \
+      tini \
+      gnupg \
+      less \
+      vim \
+      jq \
+      python3 \
+      python3-pip \
+      gosu \
+      netcat-openbsd \
+ && rm -rf /var/lib/apt/lists/*
+
+# ─── Stage 2: mitmproxy + scrubber lib ─────────────────────────────
+# --break-system-packages: debian 12 enforces PEP-668; mitmproxy ships
+# as a pip-only distribution and we want it system-wide.
+ARG MITMPROXY_VERSION=11.0.2
+RUN pip install --no-cache-dir --break-system-packages \
+      "mitmproxy==${MITMPROXY_VERSION}" \
+ && mitmdump --version | head -1
+
+# Scrubber library + addon. /opt/yolocage/ssproxy is on sys.path when
+# mitmdump is invoked with `-s /opt/yolocage/ssproxy/addon.py` because
+# mitmproxy auto-appends the addon-script directory.
+COPY addons/scrub_secrets.py     /opt/yolocage/ssproxy/scrub_secrets.py
+COPY addons/gitleaks_patterns.py /opt/yolocage/ssproxy/gitleaks_patterns.py
+COPY addons/addon.py             /opt/yolocage/ssproxy/addon.py
+
+# ─── Stage 3: claude-code ──────────────────────────────────────────
+# Two-step install: the claude.ai installer gives us the native CLI
+# bundle (latest stable at build time), then we npm-install a pinned
+# version on top so the image is reproducible. The npm version
+# overlays the installer's bundled one.
+RUN curl -fsSL https://claude.ai/install.sh | bash \
+ && /root/.local/bin/claude --version || true
+
+ARG CLAUDE_CODE_VERSION=2.1.173
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && claude --version
+
+# ─── Stage 4: entrypoint ───────────────────────────────────────────
+COPY images/entrypoint.sh /usr/local/bin/yc-entrypoint
+RUN chmod 0755 /usr/local/bin/yc-entrypoint
+
+# ─── Stage 5: non-root agent user ──────────────────────────────────
+# uid 1000 keeps the bind-mounted /workspace owner-matched for the
+# common case of a developer running yc from their own user account.
+# node:22-bookworm ships with a pre-existing `node` user at uid 1000 —
+# remove it before adding `agent` so the uid is free.
+RUN userdel -r node 2>/dev/null || true \
+ && groupadd --system --gid 1000 agent \
+ && useradd --system --uid 1000 --gid agent \
+      --home-dir /home/agent --create-home --shell /bin/bash agent \
+ && install -d -m 0755 -o agent -g agent /home/agent/.claude \
+ && install -d -m 0755 -o agent -g agent /home/agent/.mitmproxy \
+ && install -d -m 0755 -o agent -g agent /workspace
+
+WORKDIR /workspace
+
+# tini handles PID 1 + zombie reaping; the entrypoint script then
+# bootstraps the scrubber and exec()s the agent under gosu agent.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/yc-entrypoint"]
+CMD ["claude", "--dangerously-skip-permissions"]
