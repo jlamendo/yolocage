@@ -27,7 +27,14 @@ const { Command } = require('commander');
 
 const { resolveCascade } = require('./lib/config');
 const { isKnownType, getType, TYPE_DEFAULTS } = require('./lib/types');
-const { buildRunArgs, runDocker, dockerArgv } = require('./lib/docker');
+const crypto = require('crypto');
+const {
+  buildRunArgs,
+  runDocker,
+  dockerArgv,
+  cageExists,
+  cageRunning,
+} = require('./lib/docker');
 const { update: runUpdate } = require('./lib/update');
 
 const SUBCOMMANDS = new Set(['create', 'run', 'list', 'rm', 'logs', 'pull', 'update', 'help']);
@@ -101,18 +108,69 @@ function assertSafeCwdForShortcut() {
   }
 }
 
+// Derive a deterministic cage name from the cwd + agent type. Same dir +
+// same type → same name → `yc claude` re-runs attach to the same cage.
+// Different cwds with the same basename get disambiguated by the 8-hex hash
+// of the full path. Output respects docker container name rules
+// (^[a-zA-Z0-9][a-zA-Z0-9_.-]*$).
+function getCwdCageName(type, cwd) {
+  cwd = cwd || process.cwd();
+  const raw = path.basename(cwd).toLowerCase();
+  // Squash anything that isn't a docker-name char to '-', then trim leading
+  // and trailing punctuation so the result starts with a letter or digit.
+  let basename = raw
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/^[-._]+/, '')
+    .replace(/[-._]+$/, '')
+    .substring(0, 32);
+  if (!basename) basename = 'cage';
+  const hash = crypto.createHash('sha256').update(cwd).digest('hex').substring(0, 8);
+  return `yc-${type}-${basename}-${hash}`;
+}
+
 function runShortcut(type, passthrough) {
   assertSafeCwdForShortcut();
   // Validate type (throws on opencode/unknown).
   getType(type);
+  const cageName = getCwdCageName(type);
+
+  // Branch 1: cage is already running. Attach to it and let the user
+  // rejoin the existing claude/codex session. docker attach's default
+  // detach key (Ctrl-P Ctrl-Q) leaves the cage running; Ctrl-C exits
+  // claude which stops the cage.
+  if (cageRunning(cageName)) {
+    process.stderr.write(
+      `yc: cage '${cageName}' already running; attaching ` +
+        '(Ctrl-P Ctrl-Q to detach, Ctrl-C exits claude)\n'
+    );
+    const res = runDocker(['attach', cageName]);
+    process.exit(res.status == null ? 1 : res.status);
+  }
+
+  // Branch 2: cage exists but is stopped. Start it back up; the entrypoint
+  // re-runs the original CMD which (for claude) includes --continue so the
+  // prior in-cwd session is restored.
+  if (cageExists(cageName)) {
+    process.stderr.write(`yc: resuming cage '${cageName}'\n`);
+    const res = runDocker(['start', '-ai', cageName]);
+    process.exit(res.status == null ? 1 : res.status);
+  }
+
+  // Branch 3: no cage yet for this cwd + type. Create + start + attach in
+  // one docker run. Persistent (no --rm) so subsequent `yc claude` in this
+  // dir lands in branches 1 or 2.
   const spec = resolveCascade({
     type,
     homeYcrcPath: homeYcrcPath(),
     projectYcrcPath: projectYcrcPath(),
     cliLayer: { type, passthrough },
   });
-  const { argv: runArgs, cmd } = buildRunArgs(spec, { rm: true, interactive: true });
-  const dArgv = dockerArgv([...runArgs, ...cmd]);
+  process.stderr.write(`yc: creating cage '${cageName}' for ${process.cwd()}\n`);
+  const { argv: runArgs, cmd } = buildRunArgs(spec, {
+    rm: false,
+    interactive: true,
+    name: cageName,
+  });
   const res = runDocker([...runArgs, ...cmd]);
   process.exit(res.status == null ? 1 : res.status);
 }
@@ -298,5 +356,6 @@ module.exports = {
   buildCliLayer,
   assertSafeCwdForShortcut,
   assertCageName,
+  getCwdCageName,
   main,
 };

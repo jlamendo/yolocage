@@ -37,7 +37,7 @@ yc claude
 
 ## Usage
 
-### Shortcut form (one-shot, ephemeral)
+### Shortcut form (per-directory, persistent)
 
 ```bash
 yc                  # defaults to claude in $(pwd)
@@ -46,7 +46,15 @@ yc codex            # codex instead of claude
 yc claude -- --resume   # pass-through args after --
 ```
 
-Equivalent to running `claude` (or `codex`) in your current directory, except the container has a scrubber routing all LLM API calls. Container is removed on exit.
+Each project directory gets its own cage. The cage name is derived deterministically from the directory path (`yc-<type>-<basename>-<8hex>`), so re-running `yc claude` in the same dir either **resumes** the stopped cage or **attaches** to the running one — never spawns a duplicate. Claude is run with `--continue` by default so the prior in-cwd conversation is restored on re-attach.
+
+Three outcomes from a single `yc claude` invocation, picked automatically:
+
+- **No cage for this dir yet** → create, start, attach. Cage persists between sessions.
+- **Cage exists but is stopped** → `docker start -ai` (restart and reattach). Claude `--continue` resumes the prior session.
+- **Cage is already running** → `docker attach` to the live session. Press `Ctrl-P Ctrl-Q` to detach without stopping the cage; `Ctrl-C` exits claude (and stops the cage).
+
+Cages accumulate as you move between projects. Use `yc list` to see them and `yc rm <name>` to clean up. Volumes for the per-cage mitmproxy CA and any state live alongside the container — `yc rm` removes both.
 
 ### Named cages (persistent)
 
