@@ -47,7 +47,7 @@ COPY addons/gitleaks_patterns.py /opt/yolocage/ssproxy/gitleaks_patterns.py
 COPY addons/addon.py             /opt/yolocage/ssproxy/addon.py
 
 # ─── Stage 4: codex CLI ────────────────────────────────────────────
-# @openai/codex; pinned to match cork's worker-codex.
+# @openai/codex; pinned to a current stable release.
 ARG CODEX_VERSION=0.139.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}" \
  && codex --version

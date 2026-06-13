@@ -18,8 +18,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # ─── Stage 1: base apt deps ────────────────────────────────────────
 # Ubuntu 24.04 ships Python 3.12 by default — required for the mitmproxy
 # 11.1.x line (the previous node:22-bookworm base shipped Python 3.11
-# which capped mitmproxy at 11.0.2). Aligning the pin with cork's
-# production ssproxy (11.1.3).
+# which capped mitmproxy at 11.0.2). Matching the current upstream stable line (11.1.3).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \

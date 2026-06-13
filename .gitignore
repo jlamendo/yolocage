@@ -12,3 +12,4 @@ coverage/
 # Build artifacts
 dist/
 *.tgz
+__pycache__/

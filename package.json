@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Sandboxed claude-code / codex container with built-in egress credential scrubber. Run AI coding agents in --dangerously-skip-permissions mode with a safety net.",
   "license": "MIT",
-  "author": "Cork contributors",
+  "author": "yolocage contributors",
   "homepage": "https://github.com/jlamendo/yolocage",
   "repository": {
     "type": "git",
