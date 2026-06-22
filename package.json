@@ -1,6 +1,6 @@
 {
   "name": "yolocage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sandboxed claude-code / codex container with built-in egress credential scrubber. Run AI coding agents in --dangerously-skip-permissions mode with a safety net.",
   "license": "MIT",
   "author": "yolocage contributors",

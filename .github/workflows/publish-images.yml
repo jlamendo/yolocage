@@ -1,0 +1,105 @@
+name: Publish cage images
+
+# Builds the yolocage cage images (claude, codex) and pushes them
+# multi-arch (linux/amd64 + linux/arm64) to GHCR under
+# ghcr.io/jlamendo/yolocage-<name>.
+#
+# Trigger:
+#   - push to main → publishes :latest + :<short-sha>
+#   - workflow_dispatch → same, plus optional --tag input override
+#
+# The PAT-equivalent GITHUB_TOKEN gets `packages: write` via the
+# permissions block below — no external secret needed. First-time
+# publish: the resulting GHCR package defaults to private; the
+# `make-package-public` job flips it via the org API right after.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'images/**'
+      - 'addons/**'
+      - '.github/workflows/publish-images.yml'
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Extra tag in addition to :latest and :<sha> (e.g. 0.1.1)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cage:
+          - { name: claude, dockerfile: images/Dockerfile.claude }
+          - { name: codex,  dockerfile: images/Dockerfile.codex  }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          IMG="ghcr.io/${{ github.repository_owner }}/yolocage-${{ matrix.cage.name }}"
+          # Always: :latest + :<short-sha>. Optionally: workflow_dispatch.tag.
+          TAGS="${IMG}:latest,${IMG}:${GITHUB_SHA::7}"
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAGS="${TAGS},${IMG}:${{ inputs.tag }}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.cage.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.cage.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cage.name }}
+          provenance: false
+
+  make-package-public:
+    # Newly-created GHCR packages default to private, even when the
+    # source repo is public. Flip every yolocage-* package to public so
+    # `docker pull ghcr.io/jlamendo/yolocage-claude` works without
+    # authentication. Idempotent — re-running on an already-public
+    # package is a no-op.
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Set yolocage-* container packages to public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for pkg in yolocage-claude yolocage-codex; do
+            echo "→ ${pkg}"
+            gh api -X PATCH \
+              "/user/packages/container/${pkg}" \
+              -f visibility=public \
+            || echo "  (could not flip ${pkg} — may not exist yet, or already public)"
+          done

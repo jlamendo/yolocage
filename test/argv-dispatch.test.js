@@ -80,12 +80,11 @@ describe('classifyArgv', () => {
     expect(c.mode).toBe('subcommand');
   });
 
-  test('opencode CLASSIFIES as shortcut (resolveCascade will reject it later)', () => {
-    // opencode IS a known type token; classifyArgv treats it as shortcut
-    // form. The v2-not-yet error is raised by getType() at run time,
-    // which is the layer that owns the v0/v2 gate.
+  test('unknown shortcut token falls through to subcommand mode', () => {
+    // Anything that isn't in TYPE_DEFAULTS (opencode was removed in
+    // 0.1.1) is treated as a generic subcommand. The fallback path
+    // then surfaces the canonical 'unknown subcommand' help text.
     const c = classifyArgv(['opencode']);
-    expect(c.mode).toBe('shortcut');
-    expect(c.type).toBe('opencode');
+    expect(c.mode).toBe('subcommand');
   });
 });

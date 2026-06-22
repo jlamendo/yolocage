@@ -60,7 +60,7 @@ describe('resolveCascade', () => {
       cliLayer: { type: 'claude' },
     });
     expect(spec.type).toBe('claude');
-    expect(spec.image).toBe('yolocage/claude:dev');
+    expect(spec.image).toBe('ghcr.io/jlamendo/yolocage-claude:latest');
     expect(spec.configDirHost).toBe(path.join(os.homedir(), '.claude'));
     expect(spec.configDirContainer).toBe('/home/agent/.claude');
     expect(spec.bindDirs.length).toBe(2); // workspace + configDir
@@ -148,11 +148,14 @@ describe('resolveCascade', () => {
       cliLayer: { type: 'codex' },
     });
     expect(spec.type).toBe('codex');
-    expect(spec.image).toBe('yolocage/codex:dev');
+    expect(spec.image).toBe('ghcr.io/jlamendo/yolocage-codex:latest');
     expect(spec.configDirContainer).toBe('/home/agent/.codex');
   });
 
-  test('opencode errors with v2 message', () => {
+  test('unknown type errors cleanly', () => {
+    // opencode was the prior v0:false stub; it's been removed in 0.1.1,
+    // so requesting any unknown type should now error with the
+    // canonical `unknown --type=…` message.
     expect(() =>
       resolveCascade({
         type: 'opencode',
@@ -160,6 +163,6 @@ describe('resolveCascade', () => {
         projectYcrcPath: path.join(tmpDir, 'nope2.ycrc'),
         cliLayer: { type: 'opencode' },
       })
-    ).toThrow(/v2/);
+    ).toThrow(/unknown --type=opencode/);
   });
 });

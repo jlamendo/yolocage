@@ -85,7 +85,7 @@ describe('buildRunArgs', () => {
     const docker = freshDockerModule();
     const spec = {
       type: 'claude',
-      image: 'yolocage/claude:dev',
+      image: 'ghcr.io/jlamendo/yolocage-claude:latest',
       bindDirs: [
         { host: '/proj', container: '/workspace', mode: 'rw' },
         { host: '/home/me/.claude', container: '/home/agent/.claude', mode: 'rw' },
@@ -107,8 +107,8 @@ describe('buildRunArgs', () => {
     expect(argv).toContain('4g');
     expect(argv).toContain('--cpus');
     expect(argv).toContain('2');
-    expect(argv).toContain('yolocage/claude:dev');
-    expect(argv[argv.length - 1]).toBe('yolocage/claude:dev');
+    expect(argv).toContain('ghcr.io/jlamendo/yolocage-claude:latest');
+    expect(argv[argv.length - 1]).toBe('ghcr.io/jlamendo/yolocage-claude:latest');
     expect(cmd).toEqual(['claude', '--dangerously-skip-permissions']);
   });
 
