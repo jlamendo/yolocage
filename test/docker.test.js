@@ -128,6 +128,39 @@ describe('buildRunArgs', () => {
     expect(argv).toContain('YC_TMUX=1');
   });
 
+  test('kind:file bindDirs are materialized on the host before argv is built', () => {
+    // Make sure buildRunArgs touches missing single-file binds into
+    // existence so docker doesn't auto-create an empty directory in
+    // their place. We point the bind at a tmp path that DOES NOT
+    // exist; buildRunArgs should create an empty file before the
+    // mount string is emitted.
+    spawnSync.mockReturnValueOnce({ status: 0 });
+    const os = require('os');
+    const fs = require('fs');
+    const path = require('path');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'yc-file-bind-'));
+    const target = path.join(tmpDir, 'nested', '.claude.json');
+    expect(fs.existsSync(target)).toBe(false);
+    const docker = freshDockerModule();
+    const { argv } = docker.buildRunArgs(
+      {
+        image: 'x',
+        bindDirs: [
+          { host: '/proj', container: '/workspace', mode: 'rw' },
+          { host: target, container: '/home/agent/.claude.json', mode: 'rw', kind: 'file' },
+        ],
+        tmux: false,
+        cmd: ['claude'],
+        passthrough: [],
+      },
+      {}
+    );
+    expect(fs.existsSync(target)).toBe(true);
+    expect(fs.statSync(target).isFile()).toBe(true);
+    expect(argv).toContain(`${target}:/home/agent/.claude.json:rw`);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   test('ssproxyExtensions mounts file + sets env', () => {
     spawnSync.mockReturnValueOnce({ status: 0 });
     const docker = freshDockerModule();

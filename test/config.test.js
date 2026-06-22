@@ -63,7 +63,15 @@ describe('resolveCascade', () => {
     expect(spec.image).toBe('ghcr.io/jlamendo/yolocage-claude:latest');
     expect(spec.configDirHost).toBe(path.join(os.homedir(), '.claude'));
     expect(spec.configDirContainer).toBe('/home/agent/.claude');
-    expect(spec.bindDirs.length).toBe(2); // workspace + configDir
+    // workspace + configDir + ~/.claude.json (the type-declared
+    // single-file bind so claude-code can read host-side auth)
+    expect(spec.bindDirs.length).toBe(3);
+    const claudeJsonBind = spec.bindDirs.find(
+      (b) => b.container === '/home/agent/.claude.json',
+    );
+    expect(claudeJsonBind).toBeTruthy();
+    expect(claudeJsonBind.host).toBe(path.join(os.homedir(), '.claude.json'));
+    expect(claudeJsonBind.mode).toBe('rw');
   });
 
   test('home .ycrc image overrides type default', () => {
